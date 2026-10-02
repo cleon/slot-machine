@@ -7,6 +7,7 @@ import { createI18n, type I18n, type Lang } from './i18n'
 
 export class Shell {
   readonly stageEl: HTMLElement
+  readonly motionEl: HTMLElement
   private readonly stageWrap: HTMLElement
   onTurbo: ((on: boolean) => void) | null = null
 
@@ -37,8 +38,6 @@ export class Shell {
   private readonly previewButton: HTMLButtonElement
   private readonly stopAutoButton: HTMLButtonElement
   private readonly flourish: HTMLElement
-  private readonly flourishKicker: HTMLElement
-  private readonly flourishAmount: HTMLElement
   private readonly loadingEl: HTMLElement
   private readonly bannerEl: HTMLElement
   private readonly fineEl: HTMLElement
@@ -61,6 +60,7 @@ export class Shell {
     document.documentElement.lang = options.lang
 
     this.stageEl = this.must('[data-stage]')
+    this.motionEl = this.must('[data-motion]')
     this.stageWrap = this.must('[data-stage-wrap]')
     this.balanceEl = this.must('[data-balance]')
     this.winEl = this.must('[data-win]')
@@ -75,8 +75,6 @@ export class Shell {
     this.previewButton = this.must('[data-preview]')
     this.stopAutoButton = this.must('[data-stop-auto]')
     this.flourish = this.must('[data-flourish]')
-    this.flourishKicker = this.must('[data-flourish-kicker]')
-    this.flourishAmount = this.must('[data-flourish-amount]')
     this.loadingEl = this.must('[data-loading]')
     this.bannerEl = this.must('[data-banner]')
     this.fineEl = this.must('[data-fine]')
@@ -100,6 +98,10 @@ export class Shell {
 
   setHurry(handler: () => void): void {
     this.hurry = handler
+  }
+
+  copy(key: string, vars?: Record<string, string | number>): string {
+    return this.i18n.t(key, vars)
   }
 
   setReady(): void {
@@ -199,11 +201,7 @@ export class Shell {
       this.winEl.classList.remove('pop')
       void this.winEl.offsetWidth
       this.winEl.classList.add('pop')
-      if (big) {
-        this.flourish.hidden = false
-        this.flourishKicker.textContent = this.i18n.t('bigWin')
-        this.flourishAmount.textContent = this.money(totalWinCents)
-      }
+      if (big) this.flourish.hidden = true
     })
     this.host.on('featureStart', ({ awarded }) => {
       this.audio.play('feature')
@@ -445,6 +443,7 @@ const TEMPLATE = `
     <div class="stage" data-stage>
       <p class="loading" data-loading></p>
     </div>
+    <div class="motion" data-motion></div>
     <div class="flourish" data-flourish hidden>
       <p data-flourish-kicker></p>
       <strong data-flourish-amount></strong>

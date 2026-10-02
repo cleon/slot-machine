@@ -146,8 +146,8 @@ export class ReelView {
     const frac = pos - shifted
     const top = mod(this.anchorTop - shifted, this.strip.length)
     const spinning = this.motion !== null
-    const stretch = spinning ? 1 + Math.min(0.38, Math.abs(speed) * 0.16) : 1
-    const trailAlpha = spinning ? Math.min(0.22, Math.abs(speed) * 0.08) : 0
+    const stretch = spinning ? 1 + Math.min(0.55, Math.abs(speed) * 0.24) : 1
+    const trailAlpha = spinning ? Math.min(0.3, Math.abs(speed) * 0.12) : 0
     let squashX = 1
     let squashY = 1
     if (this.landAt && !spinning) {

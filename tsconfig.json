@@ -14,6 +14,6 @@
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "host", "shell", "game", "shared", "assets"],
+  "include": ["src", "host", "shell", "game", "motion", "shared", "assets"],
   "exclude": ["**/*.test.ts", "dist", "node_modules"]
 }

@@ -45,15 +45,17 @@ Free spins are a host state (no debit, 2× wins, retrigger adds spins). They do 
 
 ## Art
 
-Reel symbols are flat candy blobs drawn for this demo: saturated shapes, black capsule eyes, Outfit labels on the clover, wild, and scatter.
+Reel symbols are flat candy blobs: saturated shapes and black capsule eyes. No letters or line icons on the symbols.
 
 `assets/brand/` is the Figma Buildathon export (hero parade, brown blob, cloud). The hero strip sits above the reels and inside the paytable. Those files are the source characters; the reel SVGs are new drawings in the same language, not traces of another game.
 
-## Audio and motion
+## Motion
 
-Howler plays short synthesized wavs from `assets/audio/` (`tools/make-audio.mjs` rebuilds them). There is no licensed soundtrack.
+`motion/` is a thin overlay. Timeline clips (logo sting, ambient blob drift, scatter tease, kinetic win count-up, big-win flourish, free-spin intro and outro, soft phase washes) play on host and reel events. They use the same blob sprites as the reels. There is no music bed.
 
-Land squash, idle bob, and win pulse are Pixi tweens. `game/spineSlot.ts` lists the `.skel` / `.atlas` paths and `idle` / `land` / `win` names to use if someone later exports Spine and links a runtime. This repo does not ship either.
+Sound is still the short spin ticks. The Sound button mutes them. Browsers block audio until the first tap or Spin.
+
+Land squash, idle bob, and win pulse stay in the reel view. `game/spineSlot.ts` is the drop-in point if `.skel` / `.atlas` files show up later.
 
 ## Trade-off
 

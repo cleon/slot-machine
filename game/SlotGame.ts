@@ -1,8 +1,9 @@
 import { Application, Container, Graphics, SCALE_MODES, Text, TextStyle, Texture } from 'pixi.js'
 import type { SpinResult, SymbolId, Win } from '../shared/types'
-import { formatCredits, SYMBOL_IDS } from '../shared/types'
+import { SYMBOL_IDS } from '../shared/types'
 import { symbolUrls } from '../assets/manifest'
 import { BLOCK_H, BLOCK_W, CELL, DESIGN_H, DESIGN_W, GAP, ORIGIN_X, ORIGIN_Y, REEL_COUNT, cellCenter } from './layout'
+import { extraSpinMs, scatterReels } from './anticipation'
 import { ReelView } from './ReelView'
 import { SpinSession } from './spinSession'
 
@@ -32,6 +33,7 @@ export class SlotGame {
   private resizeObs: ResizeObserver | null = null
 
   onReelStop: ((symbols: SymbolId[]) => void) | null = null
+  onCelebrate: ((result: SpinResult) => void) | null = null
 
   constructor(
     private readonly el: HTMLElement,
@@ -163,13 +165,15 @@ export class SlotGame {
     this.lines?.clear()
     this.hideCallout()
     const now = performance.now()
-    const base = this.fast ? 620 : 1280
-    const step = this.fast ? 90 : 210
+    const held = scatterReels(result.grid)
+    const base = this.fast ? 700 : 1500
+    const step = this.fast ? 120 : 280
     this.reels.forEach((reel, index) => {
-      reel.spinTo(result.stops[index] ?? 0, base + index * step, now)
+      const extra = extraSpinMs(index, held, this.fast)
+      reel.spinTo(result.stops[index] ?? 0, base + index * step + extra, now)
     })
     window.clearTimeout(this.watch)
-    this.watch = window.setTimeout(() => this.forceFinish(), this.fast ? 4500 : 8000)
+    this.watch = window.setTimeout(() => this.forceFinish(), this.fast ? 6000 : 12000)
     return promise
   }
 
@@ -198,8 +202,12 @@ export class SlotGame {
     }
     this.celebrating = true
     if (result.wins.length > 0) this.showWins(result)
+    this.onCelebrate?.(result)
+    const big = result.totalWinCents >= result.betCents * 15 && result.totalWinCents > 0
     const perWin = this.fast ? 420 : 780
-    const hold = this.hurried ? 0 : result.wins.length > 0 ? Math.min(3400, Math.max(1100, result.wins.length * perWin)) : this.fast ? 90 : 180
+    const clip = big ? 2200 : result.wins.length > 0 ? 1200 : 0
+    const beat = result.wins.length > 0 ? result.wins.length * perWin : this.fast ? 90 : 180
+    const hold = this.hurried ? 0 : Math.min(3600, Math.max(clip, beat))
     window.clearTimeout(this.celebrateTimer)
     this.celebrateTimer = window.setTimeout(() => this.finishSession(), hold)
   }
@@ -248,14 +256,9 @@ export class SlotGame {
         })
       }
     }
-    if (this.kicker) {
-      this.kicker.visible = big
-      this.kicker.text = 'BIG WIN'
-    }
-    if (this.callout) {
-      this.callout.visible = true
-      this.callout.text = `+${formatCredits(win.amountCents)}`
-    }
+    if (this.kicker) this.kicker.visible = false
+    if (this.callout) this.callout.visible = false
+    void big
   }
 
   private tickCelebration(now: number): void {

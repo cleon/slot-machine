@@ -5,6 +5,7 @@ import '../shell/styles.css'
 import { SlotGame } from '../game/SlotGame'
 import { DemoHost } from '../host/DemoHost'
 import { mulberry32 } from '../host/rng'
+import { MotionLayer } from '../motion/MotionLayer'
 import { Shell } from '../shell/Shell'
 import type { Lang } from '../shell/i18n'
 
@@ -26,11 +27,22 @@ if (!(root instanceof HTMLElement)) throw new Error('missing #app')
 
 const shell = new Shell(root, host, { lang, reduceMotion })
 const game = new SlotGame(shell.stageEl, { fast: reduceMotion })
+const motion = new MotionLayer(shell.motionEl, { reduce: reduceMotion })
 shell.setHurry(() => game.hurry())
 shell.onTurbo = (on) => game.setFast(on || reduceMotion)
-game.onReelStop = (symbols) => shell.tick(symbols)
+
+let scattersThisSpin = 0
+game.onReelStop = (symbols) => {
+  shell.tick(symbols)
+  const landed = symbols.filter((symbol) => symbol === 'scatter').length
+  if (landed === 0) return
+  scattersThisSpin += landed
+  motion.scatter(scattersThisSpin >= 2)
+}
 
 host.on('spinStart', ({ result }) => {
+  scattersThisSpin = 0
+  motion.phase('spin')
   game.play(result).then(
     (shown) => {
       if (shown) host.completePresentation()
@@ -42,8 +54,35 @@ host.on('spinStart', ({ result }) => {
   )
 })
 
-void game.load(host.launch().strips).then(
-  () => shell.setReady(),
+game.onCelebrate = (result) => {
+  if (result.totalWinCents <= 0) return
+  const big = result.totalWinCents >= result.betCents * 15
+  if (big) motion.bigWin(result.totalWinCents, shell.copy('bigWin'))
+  else motion.win(result.totalWinCents)
+}
+
+host.on('featureStart', ({ awarded }) => {
+  motion.featureIn(awarded, shell.copy('freeSpins'))
+})
+
+host.on('featureEnd', () => {
+  motion.featureOut(shell.copy('featureEnd'))
+})
+
+host.on('spinStop', () => {
+  motion.phase(host.snapshot.freeSpinsRemaining > 0 ? 'feature' : 'idle')
+})
+
+void Promise.all([
+  game.load(host.launch().strips),
+  motion.load().catch((error: unknown) => {
+    console.error(error)
+  }),
+]).then(
+  () => {
+    shell.setReady()
+    motion.intro()
+  },
   (error: unknown) => {
     console.error(error)
     const webgl = error instanceof Error && /renderer|webgl/i.test(error.message)

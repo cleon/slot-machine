@@ -1,0 +1,8 @@
+{
+  "demoMode": true,
+  "currency": "CREDITS",
+  "startingBalanceCents": 100000,
+  "betLevelsCents": [100, 200, 500, 1000, 2000, 5000],
+  "defaultBetIndex": 3,
+  "freeSpinMultiplier": 2
+}

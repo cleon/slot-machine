@@ -17,6 +17,7 @@ import spin from './audio/spin.wav?url'
 import win from './audio/win.wav?url'
 import bigwin from './audio/bigwin.wav?url'
 import feature from './audio/feature.wav?url'
+import tease from './audio/tease.wav?url'
 
 export const symbolUrls: Record<SymbolId, string> = {
   l1,
@@ -32,4 +33,4 @@ export const symbolUrls: Record<SymbolId, string> = {
 
 export const brandUrls = { hero, blob, cloud }
 
-export const audioUrls = { click, stop, spin, win, bigwin, feature }
+export const audioUrls = { click, stop, spin, win, bigwin, feature, tease }

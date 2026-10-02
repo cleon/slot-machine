@@ -24,7 +24,7 @@ Useful query params:
 - `?force=scatter` — the next spin awards the free-spin hook
 - `?force=line` — the next spin lands a clover line
 
-Space spins. Stop hurries the current spin and cancels autoplay. Free spins still finish.
+Space or Spin starts one round. Stop hurries that round and cancels autoplay. Free spins wait for another Spin unless Auto is already running. **Stop auto** ends a run, including the gap between spins.
 
 ## Architecture
 
@@ -41,7 +41,7 @@ public/   favicon
 
 Boot lives in `src/main.ts`. The host decides the outcome (`spinStart` carries stops, the grid, and wins). The game only animates that result, then calls `completePresentation()`, which credits the wallet and emits `spinStop`, `win`, `balanceUpdate`, `featureStart`, and `featureEnd`.
 
-Free spins are a real state machine on the host (no debit, 2× wins, retrigger adds spins) with a short celebration in the shell. Press **Preview free spins** to force three scatters once.
+Free spins are a host state (no debit, 2× wins, retrigger adds spins). They do not start by themselves. **Preview free spins** forces three scatters on the next Spin. Reel symbols are eyes-only blobs — no letters or line icons.
 
 ## Art
 

@@ -1,16 +1,16 @@
-import { Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js'
+import { Container, Graphics, Sprite, Texture } from 'pixi.js'
 import type { SymbolId } from '../shared/types'
 import { mod } from '../shared/types'
-import { easeOutCubic, slotEase } from './ease'
+import { easeOutCubic, reelCurve, settleBump } from './ease'
 import { CELL, ROW_COUNT } from './layout'
 import { motionFor } from './spineSlot'
 
 interface SymbolView {
   root: Container
   sprite: Sprite
-  label: Text
-  badge: Graphics
+  trail: Sprite
   current: SymbolId | null
+  teaseUntil: number
 }
 
 interface Motion {
@@ -27,6 +27,7 @@ export class ReelView {
   private readonly mask: Graphics
   private motion: Motion | null = null
   private travel = 0
+  private lastPos = 0
   private readonly anchorTop = 0
   private landAt = 0
   private settled = true
@@ -60,46 +61,61 @@ export class ReelView {
       this.views.push(view)
       symbols.addChild(view.root)
     }
-    this.draw(0, null, false)
+    this.draw(0, null, false, 0, false)
   }
 
   spinTo(stop: number, duration: number, now: number): void {
     const currentTop = this.topAt(this.travel)
     let delta = mod(currentTop - stop, this.strip.length)
-    delta += (2 + this.index) * this.strip.length
+    delta += (3 + this.index) * this.strip.length
     this.motion = {
       from: this.travel,
       to: this.travel + delta,
       t0: now,
-      duration: Math.max(180, duration),
-      ease: slotEase,
+      duration: Math.max(240, duration),
+      ease: reelCurve,
     }
     this.settled = false
     this.landAt = 0
+    this.lastPos = this.travel
   }
 
   slam(now: number): void {
     if (!this.motion) return
-    const elapsed = now - this.motion.t0
+    const elapsed = Math.max(0, now - this.motion.t0)
     const t = Math.min(1, elapsed / this.motion.duration)
     const pos = this.motion.from + (this.motion.to - this.motion.from) * this.motion.ease(t)
     this.motion = {
       from: pos,
       to: this.motion.to,
       t0: now,
-      duration: 120 + this.index * 45,
+      duration: 150 + this.index * 55,
       ease: easeOutCubic,
     }
   }
 
-  /** Returns true on the frame the reel lands. */
-  update(now: number, winRows: ReadonlySet<number> | null, pulse: boolean): boolean {
+  /** Snap to the planned stop. Used when a spin has run past its deadline. */
+  halt(now: number): void {
+    if (this.motion) this.travel = this.motion.to
+    this.motion = null
+    this.settled = true
+    this.landAt = now
+    this.lastPos = this.travel
+  }
+
+  /** Returns the visible symbols on the frame the reel lands. */
+  update(now: number, winRows: ReadonlySet<number> | null, pulse: boolean): { landed: boolean; visible: SymbolId[] } {
     let justLanded = false
     let pos = this.travel
     if (this.motion) {
-      const t = Math.min(1, (now - this.motion.t0) / this.motion.duration)
-      pos = this.motion.from + (this.motion.to - this.motion.from) * this.motion.ease(t)
-      if (t >= 1) {
+      let elapsed = now - this.motion.t0
+      if (elapsed < 0) {
+        this.motion.t0 = now
+        elapsed = 0
+      }
+      const t = Math.min(1, elapsed / this.motion.duration)
+      pos = this.motion.from + (this.motion.to - this.motion.from) * this.motion.ease(t) + settleBump(t)
+      if (t >= 1 || elapsed > this.motion.duration + 40) {
         pos = this.motion.to
         this.travel = pos
         this.motion = null
@@ -108,30 +124,43 @@ export class ReelView {
         justLanded = true
       }
     }
-    this.draw(pos, winRows, pulse, now)
-    return justLanded
+    const speed = pos - this.lastPos
+    this.lastPos = this.motion ? pos : this.travel
+    const visible = this.draw(pos, winRows, pulse, now, justLanded, speed)
+    return { landed: justLanded, visible }
   }
 
   private topAt(travel: number): number {
     return mod(this.anchorTop - Math.floor(travel), this.strip.length)
   }
 
-  private draw(pos: number, winRows: ReadonlySet<number> | null, pulse: boolean, now = 0): void {
+  private draw(
+    pos: number,
+    winRows: ReadonlySet<number> | null,
+    pulse: boolean,
+    now: number,
+    justLanded: boolean,
+    speed = 0,
+  ): SymbolId[] {
     const shifted = Math.floor(pos)
     const frac = pos - shifted
     const top = mod(this.anchorTop - shifted, this.strip.length)
+    const spinning = this.motion !== null
+    const stretch = spinning ? 1 + Math.min(0.38, Math.abs(speed) * 0.16) : 1
+    const trailAlpha = spinning ? Math.min(0.22, Math.abs(speed) * 0.08) : 0
     let squashX = 1
     let squashY = 1
-    if (this.landAt) {
-      const p = (now - this.landAt) / 340
+    if (this.landAt && !spinning) {
+      const p = (now - this.landAt) / 480
       if (p >= 1) this.landAt = 0
       else {
-        const s = Math.sin(Math.PI * p)
-        squashX = 1 + 0.14 * s
-        squashY = 1 - 0.2 * s
+        const s = Math.sin(p * Math.PI) * (1 - p * 0.35)
+        squashX = 1 + 0.18 * s
+        squashY = 1 - 0.26 * s
       }
     }
 
+    const visible: SymbolId[] = []
     for (let i = 0; i < this.views.length; i++) {
       const view = this.views[i]
       if (!view) continue
@@ -139,49 +168,40 @@ export class ReelView {
       const symbol = this.strip[mod(top + d, this.strip.length)]
       if (!symbol) continue
       this.paint(view, symbol)
+      const onScreen = d >= 0 && d < ROW_COUNT
+      if (onScreen) visible.push(symbol)
+      if (justLanded && onScreen && symbol === 'scatter') view.teaseUntil = now + 720
 
-      const visible = d >= 0 && d < ROW_COUNT
-      const winner = visible && winRows?.has(d) === true
+      const winner = onScreen && winRows?.has(d) === true
+      const teasing = now < view.teaseUntil
       const bob =
-        this.settled && !this.landAt && !winRows
-          ? Math.sin(now / 380 + this.index * 0.8 + d) * 3.2
+        this.settled && !this.landAt && !winRows && !teasing
+          ? Math.sin(now / 420 + this.index * 0.7 + d) * 4
           : 0
-      const beat = winner && pulse ? 1 + Math.sin(now / 150) * 0.07 : 1
-      view.root.scale.set(squashX * beat, squashY * beat)
+      const breathe = this.settled && !this.landAt && !spinning ? 1 + Math.sin(now / 560 + d + this.index) * 0.03 : 1
+      const beat = teasing
+        ? 1.1 + Math.sin(now / 70) * 0.05
+        : winner && pulse
+          ? 1 + Math.sin(now / 140) * 0.08
+          : 1
+      view.root.scale.set(squashX * beat * breathe, squashY * beat * breathe)
       view.root.position.set(CELL / 2, (d + frac) * CELL + CELL / 2 + bob)
-      view.root.alpha = visible && winRows && !winner ? 0.3 : 1
+      view.root.alpha = onScreen && winRows && !winner && !teasing ? 0.28 : 1
+      fitSymbol(view.sprite, stretch)
+      fitSymbol(view.trail, stretch)
+      view.trail.alpha = onScreen ? trailAlpha : 0
+      view.trail.position.y = CELL / 2 - Math.sign(speed || 1) * 10
     }
+    return visible
   }
 
   private paint(view: SymbolView, symbol: SymbolId): void {
     if (view.current === symbol) return
     view.current = symbol
     const texture = this.textures[symbol]
-    if (texture) view.sprite.texture = texture
-    const labeled = symbol === 'h1' || symbol === 'wild' || symbol === 'scatter'
-    view.label.visible = labeled
-    view.badge.visible = symbol === 'wild' || symbol === 'scatter'
-    if (symbol === 'h1') {
-      view.label.text = 'G'
-      view.label.style.fontSize = 44
-      view.label.position.y = CELL * 0.66
-    } else if (symbol === 'wild') {
-      view.label.text = 'WILD'
-      view.label.style.fontSize = 22
-      view.label.position.y = CELL * 0.72
-    } else if (symbol === 'scatter') {
-      view.label.text = 'SCATTER'
-      view.label.style.fontSize = 15
-      view.label.position.y = CELL * 0.72
-    }
-    if (view.badge.visible) {
-      const width = symbol === 'scatter' ? 108 : 82
-      view.badge.clear()
-      view.badge.beginFill(0x14120b, 0.22)
-      view.badge.drawRoundedRect(-width / 2, -14, width, 28, 10)
-      view.badge.endFill()
-      view.badge.position.set(CELL / 2, view.label.position.y)
-    }
+    if (!texture) return
+    view.sprite.texture = texture
+    view.trail.texture = texture
   }
 
   private createView(): SymbolView {
@@ -191,23 +211,19 @@ export class ReelView {
     const sprite = new Sprite(this.textures.l1)
     sprite.anchor.set(0.5)
     sprite.position.set(CELL / 2, CELL / 2)
-    sprite.width = CELL - 8
-    sprite.height = CELL - 8
-    const label = new Text(
-      '',
-      new TextStyle({
-        fontFamily: 'Outfit, system-ui, sans-serif',
-        fontWeight: '800',
-        fontSize: 22,
-        fill: '#fffdf8',
-        align: 'center',
-      }),
-    )
-    label.anchor.set(0.5)
-    label.position.set(CELL / 2, CELL * 0.7)
-    label.resolution = 2
-    const badge = new Graphics()
-    root.addChild(sprite, badge, label)
-    return { root, sprite, label, badge, current: null }
+    const trail = new Sprite(this.textures.l1)
+    trail.anchor.set(0.5)
+    trail.position.set(CELL / 2, CELL / 2)
+    trail.alpha = 0
+    fitSymbol(sprite, 1)
+    fitSymbol(trail, 1)
+    root.addChild(trail, sprite)
+    return { root, sprite, trail, current: null, teaseUntil: 0 }
   }
+}
+
+function fitSymbol(sprite: Sprite, stretchY: number): void {
+  const width = sprite.texture.width || 1
+  const base = (CELL - 6) / width
+  sprite.scale.set(base, base * stretchY)
 }

@@ -52,16 +52,17 @@ function sequence(notes) {
 }
 
 function whoosh() {
-  const n = Math.floor(SR * 0.26)
+  const n = Math.floor(SR * 0.8)
   const out = new Array(n)
   let prev = 0
   for (let i = 0; i < n; i++) {
     const t = i / n
     const white = Math.random() * 2 - 1
-    prev = prev * 0.62 + white * 0.38
-    const env = Math.sin(Math.PI * t)
-    const sweep = Math.sin(2 * Math.PI * (180 + 520 * t) * (i / SR))
-    out[i] = (prev * 0.45 + sweep * 0.12) * env * 0.55
+    prev = prev * 0.72 + white * 0.28
+    const edge = Math.min(1, t / 0.08, (1 - t) / 0.08)
+    const hum = Math.sin(2 * Math.PI * 92 * (i / SR)) * 0.18
+    const tick = Math.sin(2 * Math.PI * 180 * (i / SR)) * 0.05
+    out[i] = (prev * 0.42 + hum + tick) * edge * 0.7
   }
   return out
 }
@@ -74,15 +75,21 @@ const files = {
   ]),
   'spin.wav': whoosh(),
   'win.wav': sequence([
-    { freq: 523.25, at: 0, dur: 0.16, vol: 0.32, decay: 6 },
-    { freq: 659.25, at: 0.09, dur: 0.16, vol: 0.32, decay: 6 },
-    { freq: 783.99, at: 0.18, dur: 0.22, vol: 0.34, decay: 5 },
+    { freq: 523.25, at: 0, dur: 0.18, vol: 0.28, decay: 5 },
+    { freq: 659.25, at: 0.08, dur: 0.18, vol: 0.3, decay: 5 },
+    { freq: 783.99, at: 0.16, dur: 0.22, vol: 0.32, decay: 4 },
+    { freq: 1046.5, at: 0.24, dur: 0.2, vol: 0.16, decay: 6 },
   ]),
   'bigwin.wav': sequence([
-    { freq: 523.25, at: 0, dur: 0.18, vol: 0.3, decay: 5 },
-    { freq: 659.25, at: 0.1, dur: 0.18, vol: 0.3, decay: 5 },
-    { freq: 783.99, at: 0.2, dur: 0.18, vol: 0.32, decay: 5 },
-    { freq: 1046.5, at: 0.3, dur: 0.28, vol: 0.34, decay: 4 },
+    { freq: 392, at: 0, dur: 0.2, vol: 0.26, decay: 4 },
+    { freq: 523.25, at: 0.1, dur: 0.22, vol: 0.3, decay: 4 },
+    { freq: 659.25, at: 0.2, dur: 0.22, vol: 0.32, decay: 4 },
+    { freq: 783.99, at: 0.3, dur: 0.24, vol: 0.34, decay: 3.5 },
+    { freq: 1046.5, at: 0.42, dur: 0.32, vol: 0.3, decay: 3 },
+  ]),
+  'tease.wav': sequence([
+    { freq: 880, at: 0, dur: 0.08, vol: 0.22, decay: 12 },
+    { freq: 1174, at: 0.06, dur: 0.12, vol: 0.2, decay: 8 },
   ]),
   'feature.wav': sequence([
     { freq: 659.25, at: 0, dur: 0.16, vol: 0.3, decay: 5 },

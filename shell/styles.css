@@ -180,6 +180,59 @@ select:focus-visible {
 
 .banner[hidden] { display: none; }
 
+.stage-wrap.feature .stage {
+  box-shadow: 0 0 0 4px #b7f5d4, 0 24px 50px rgba(15, 159, 90, 0.16);
+}
+
+.flourish {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.flourish[hidden] { display: none; }
+
+.flourish p {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #171513;
+  color: #fffdf8;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.flourish strong {
+  font-size: clamp(40px, 8vw, 72px);
+  letter-spacing: -0.05em;
+  color: #171513;
+  text-shadow: 0 6px 0 #ffd0e6;
+}
+
+.meter.win strong.hot { color: #e23b66; }
+
+.spin:not(.hurry):not(:disabled) {
+  animation: spin-glow 2.6s ease-in-out infinite;
+}
+
+.spin.free:not(.hurry) { background: #0e9a58; }
+
+@keyframes spin-glow {
+  50% { box-shadow: 0 16px 34px rgba(28, 25, 21, 0.4); }
+}
+
+.tools button[data-stop-auto] {
+  background: #ff3d6e;
+  color: #fffdf8;
+  border-color: #ff3d6e;
+}
+
 .dock {
   width: var(--board);
   margin: 18px auto 0;

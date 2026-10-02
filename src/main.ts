@@ -28,11 +28,13 @@ const shell = new Shell(root, host, { lang, reduceMotion })
 const game = new SlotGame(shell.stageEl, { fast: reduceMotion })
 shell.setHurry(() => game.hurry())
 shell.onTurbo = (on) => game.setFast(on || reduceMotion)
-game.onReelStop = () => shell.tick()
+game.onReelStop = (symbols) => shell.tick(symbols)
 
 host.on('spinStart', ({ result }) => {
   game.play(result).then(
-    () => host.completePresentation(),
+    (shown) => {
+      if (shown) host.completePresentation()
+    },
     (error: unknown) => {
       console.error(error)
       host.completePresentation()

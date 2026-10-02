@@ -2,16 +2,20 @@ import { brandUrls, symbolUrls } from '../assets/manifest'
 import type { DemoHost } from '../host/DemoHost'
 import { formatCredits, SYMBOL_IDS, SYMBOL_TIER, type OfAKind, type SymbolId } from '../shared/types'
 import { AudioBus } from './audio'
+import { shouldChainSpin } from './chain'
 import { createI18n, type I18n, type Lang } from './i18n'
 
 export class Shell {
   readonly stageEl: HTMLElement
+  private readonly stageWrap: HTMLElement
   onTurbo: ((on: boolean) => void) | null = null
 
   private i18n: I18n
   private readonly audio = new AudioBus()
   private hurry: (() => void) | null = null
   private autoLeft = 0
+  private stopRequested = false
+  private chainGen = 0
   private timer = 0
   private ready = false
   private turbo: boolean
@@ -31,6 +35,10 @@ export class Shell {
   private readonly turboButton: HTMLButtonElement
   private readonly soundButton: HTMLButtonElement
   private readonly previewButton: HTMLButtonElement
+  private readonly stopAutoButton: HTMLButtonElement
+  private readonly flourish: HTMLElement
+  private readonly flourishKicker: HTMLElement
+  private readonly flourishAmount: HTMLElement
   private readonly loadingEl: HTMLElement
   private readonly bannerEl: HTMLElement
   private readonly fineEl: HTMLElement
@@ -53,6 +61,7 @@ export class Shell {
     document.documentElement.lang = options.lang
 
     this.stageEl = this.must('[data-stage]')
+    this.stageWrap = this.must('[data-stage-wrap]')
     this.balanceEl = this.must('[data-balance]')
     this.winEl = this.must('[data-win]')
     this.betEl = this.must('[data-bet-value]')
@@ -64,6 +73,10 @@ export class Shell {
     this.turboButton = this.must('[data-turbo]')
     this.soundButton = this.must('[data-sound]')
     this.previewButton = this.must('[data-preview]')
+    this.stopAutoButton = this.must('[data-stop-auto]')
+    this.flourish = this.must('[data-flourish]')
+    this.flourishKicker = this.must('[data-flourish-kicker]')
+    this.flourishAmount = this.must('[data-flourish-amount]')
     this.loadingEl = this.must('[data-loading]')
     this.bannerEl = this.must('[data-banner]')
     this.fineEl = this.must('[data-fine]')
@@ -100,8 +113,9 @@ export class Shell {
     this.loadingEl.textContent = this.i18n.t(kind === 'webgl' ? 'webglError' : 'loadError')
   }
 
-  tick(): void {
-    this.audio.play('stop')
+  tick(symbols: SymbolId[] = []): void {
+    this.audio.endSpin()
+    this.audio.play(symbols.includes('scatter') ? 'tease' : 'stop')
   }
 
   private bind(): void {
@@ -111,7 +125,17 @@ export class Shell {
     this.autoSelect.addEventListener('change', () => {
       this.autoLeft = Number(this.autoSelect.value) || 0
       this.audio.unlock()
-      if (this.autoLeft > 0) this.kick()
+      if (this.autoLeft > 0) {
+        this.stopRequested = false
+        this.kick(true)
+      } else {
+        this.cancelChain()
+      }
+    })
+    this.stopAutoButton.addEventListener('click', () => {
+      this.cancelChain()
+      this.hurry?.()
+      this.renderDynamic()
     })
     this.turboButton.addEventListener('click', () => {
       this.turbo = !this.turbo
@@ -154,29 +178,32 @@ export class Shell {
       this.winCents = 0
       this.roundId = result.roundId
       this.armed = false
-      this.audio.play('spin')
+      this.flourish.hidden = true
+      this.audio.startSpin()
       if (freeSpin) this.banner(this.i18n.t('freeSpins'))
-      else this.bannerEl.hidden = true
+      else if (this.host.snapshot.freeSpinsRemaining === 0) this.bannerEl.hidden = true
       this.renderDynamic()
     })
     this.host.on('spinStop', () => {
       const remaining = this.host.snapshot.freeSpinsRemaining
       if (remaining > 0) this.banner(this.i18n.t('freeLeft', { n: remaining }))
+      else this.bannerEl.hidden = true
       this.renderDynamic()
-      window.clearTimeout(this.timer)
-      const delay = this.turbo ? 260 : 460
-      this.timer = window.setTimeout(() => {
-        if (this.autoLeft > 0 || this.host.snapshot.freeSpinsRemaining > 0) this.kick()
-      }, delay)
+      this.armChain()
     })
     this.host.on('win', ({ totalWinCents }) => {
       this.winCents = totalWinCents
-      const big = totalWinCents >= this.host.snapshot.betCents * 15
+      const big = totalWinCents >= this.host.snapshot.betCents * 15 && totalWinCents > 0
       this.audio.play(big ? 'bigwin' : 'win')
       this.renderDynamic()
       this.winEl.classList.remove('pop')
       void this.winEl.offsetWidth
       this.winEl.classList.add('pop')
+      if (big) {
+        this.flourish.hidden = false
+        this.flourishKicker.textContent = this.i18n.t('bigWin')
+        this.flourishAmount.textContent = this.money(totalWinCents)
+      }
     })
     this.host.on('featureStart', ({ awarded }) => {
       this.audio.play('feature')
@@ -187,8 +214,7 @@ export class Shell {
     })
     this.host.on('rejected', ({ reason }) => {
       if (reason !== 'insufficient') return
-      this.autoLeft = 0
-      this.autoSelect.value = '0'
+      this.cancelChain()
       this.toast(this.i18n.t('insufficient'))
       this.renderDynamic()
     })
@@ -198,17 +224,18 @@ export class Shell {
     this.audio.unlock()
     if (!this.ready) return
     if (this.host.snapshot.busy) {
-      this.autoLeft = 0
-      this.autoSelect.value = '0'
+      this.cancelChain()
       this.hurry?.()
       this.renderDynamic()
       return
     }
-    this.kick()
+    this.stopRequested = false
+    this.kick(false)
   }
 
-  private kick(): void {
+  private kick(fromAuto: boolean): void {
     if (!this.ready || this.host.snapshot.busy) return
+    if (fromAuto && !shouldChainSpin({ autoRemaining: this.autoLeft, stopRequested: this.stopRequested })) return
     const free = this.host.snapshot.freeSpinsRemaining > 0
     void this.host.spin().then((ok) => {
       if (!ok) return
@@ -218,6 +245,25 @@ export class Shell {
       }
       this.renderDynamic()
     })
+  }
+
+  private armChain(): void {
+    window.clearTimeout(this.timer)
+    if (!shouldChainSpin({ autoRemaining: this.autoLeft, stopRequested: this.stopRequested })) return
+    const gen = ++this.chainGen
+    const delay = this.turbo ? 320 : 560
+    this.timer = window.setTimeout(() => {
+      if (gen !== this.chainGen) return
+      this.kick(true)
+    }, delay)
+  }
+
+  private cancelChain(): void {
+    this.chainGen += 1
+    this.autoLeft = 0
+    this.stopRequested = true
+    this.autoSelect.value = '0'
+    window.clearTimeout(this.timer)
   }
 
   private stepBet(direction: number): void {
@@ -234,7 +280,8 @@ export class Shell {
       this.renderDynamic()
       return
     }
-    this.kick()
+    this.stopRequested = false
+    this.kick(false)
   }
 
   private openPaytable(): void {
@@ -306,6 +353,7 @@ export class Shell {
       const key = node.dataset.i18n
       if (key) node.textContent = this.i18n.t(key)
     })
+    this.stopAutoButton.textContent = this.i18n.t('stopAuto')
     this.turboButton.textContent = this.turbo ? this.i18n.t('turboOn') : this.i18n.t('turbo')
     this.turboButton.setAttribute('aria-pressed', String(this.turbo))
     this.soundButton.textContent = this.audio.isMuted ? this.i18n.t('soundOff') : this.i18n.t('sound')
@@ -320,9 +368,14 @@ export class Shell {
     this.betEl.textContent = this.money(snap.betCents)
     this.linesEl.textContent = this.i18n.t('lines', { n: this.launch.lines.length })
     const busy = snap.busy
+    const inFeature = snap.freeSpinsRemaining > 0
+    this.stageWrap.classList.toggle('feature', inFeature)
     this.spinButton.disabled = !this.ready
-    this.spinButton.textContent = busy ? this.i18n.t('stop') : this.i18n.t('spin')
+    this.spinButton.textContent = busy ? this.i18n.t('stop') : inFeature ? this.i18n.t('freeSpin') : this.i18n.t('spin')
     this.spinButton.classList.toggle('hurry', busy)
+    this.spinButton.classList.toggle('free', inFeature && !busy)
+    this.winEl.classList.toggle('hot', this.winCents > 0)
+    this.stopAutoButton.hidden = this.autoLeft <= 0
     const lockBet = !this.ready || busy || snap.freeSpinsRemaining > 0
     this.betDown.disabled = lockBet || snap.betIndex <= 0
     this.betUp.disabled = lockBet || snap.betIndex >= snap.betLevelsCents.length - 1
@@ -387,10 +440,14 @@ const TEMPLATE = `
     </div>
   </header>
   <img class="parade" alt="" data-hero />
-  <div class="stage-wrap">
+  <div class="stage-wrap" data-stage-wrap>
     <p class="banner" data-banner hidden></p>
     <div class="stage" data-stage>
       <p class="loading" data-loading></p>
+    </div>
+    <div class="flourish" data-flourish hidden>
+      <p data-flourish-kicker></p>
+      <strong data-flourish-amount></strong>
     </div>
   </div>
   <section class="dock">
@@ -419,6 +476,7 @@ const TEMPLATE = `
         <span data-i18n="auto"></span>
         <select data-auto disabled></select>
       </label>
+      <button type="button" data-stop-auto hidden></button>
       <button type="button" data-turbo></button>
       <button type="button" data-sound></button>
       <button type="button" data-pay data-i18n="paytable"></button>
